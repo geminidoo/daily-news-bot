@@ -92,7 +92,7 @@ def crawl_naver_section(sid, section_name):
     result_msg = f"<b>[{section_name} 주요 뉴스]</b>\n"
     
     for art in articles:
-        if count >= 10: break # 10개 제한
+        if count >= 20: break # 10개 제한
         
         title_tag = art.select_one("a.sa_text_title")
         if not title_tag: continue
@@ -124,7 +124,7 @@ def crawl_naver_finance():
     result_msg = f"<b>[📉 주식/금융 주요 뉴스]</b>\n"
     
     for art in articles:
-        if count >= 10: break
+        if count >= 20: break
         
         subject = art.select_one("dd.articleSubject a")
         if not subject: continue
