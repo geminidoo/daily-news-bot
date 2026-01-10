@@ -4,100 +4,94 @@ import datetime
 import time
 import os
 import sys
+import socket
 
-# 로그 출력을 위한 설정 (버퍼링 방지)
+# 1. 막힘 방지 설정 (15초 동안 응답 없으면 건너뜀)
+socket.setdefaulttimeout(15)
 sys.stdout.reconfigure(line_buffering=True)
 
-# ---------------------------------------------------------
-# [설정] 텔레그램 봇 정보
-# ---------------------------------------------------------
+# 텔레그램 설정
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
 
-# ---------------------------------------------------------
-# [소스] 카테고리별 고품질 RSS 피드
-# ---------------------------------------------------------
 RSS_FEEDS = {
-    "1. 🌏 지정학 & 국제 정세 (Geopolitics)": [
-        "https://news.google.com/rss/search?q=Geopolitics+International+Relations+when:1d&hl=en-US&gl=US&ceid=US:en",
+    "1. 🌏 지정학 (Geopolitics)": [
+        "https://news.google.com/rss/search?q=Geopolitics+when:1d&hl=en-US&gl=US&ceid=US:en",
         "http://feeds.bbci.co.uk/news/world/rss.xml"
     ],
-    "2. 📈 거시 경제 & 금융 (Macro Economy)": [
-        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664", 
-        "https://finance.yahoo.com/news/rssindex" 
+    "2. 📈 경제 (Economy)": [
+        "https://finance.yahoo.com/news/rssindex",
+        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"
     ],
-    "3. 🏛️ 정책 & 규제 (Policy & Politics)": [
-        "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml",
-        "https://feeds.washingtonpost.com/rss/politics"
+    "3. 🏛️ 정치 (Politics)": [
+        "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml"
     ],
-    "4. 🏭 산업 & 기술 (Industry & Tech)": [
-        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910", 
+    "4. 🏭 기술 (Tech)": [
         "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"
     ]
 }
 
-def send_telegram_message(message):
-    """텔레그램 메시지 전송 함수 (4000자 단위 분할 전송)"""
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("❌ [오류] 토큰이나 CHAT_ID가 없습니다.")
-        return
+def log(msg):
+    print(msg, flush=True)
 
+def send_telegram(msg):
+    if not TELEGRAM_TOKEN or not CHAT_ID: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    
-    # 메시지가 너무 길 경우를 대비해 4000자 단위로 자름
-    chunk_size = 4000
-    for i in range(0, len(message), chunk_size):
-        chunk = message[i:i+chunk_size]
-        payload = {
-            'chat_id': CHAT_ID,
-            'text': chunk,
-            'parse_mode': 'HTML',
-            'disable_web_page_preview': True
-        }
-        try:
-            response = requests.post(url, data=payload)
-            response.raise_for_status()
-            time.sleep(1) # 도배 방지
-        except Exception as e:
-            print(f"❌ 전송 실패: {e}")
+    try:
+        requests.post(url, data={'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'HTML'})
+    except Exception as e:
+        log(f"❌ 전송 실패: {e}")
 
-def fetch_news():
-    print("📰 뉴스 수집을 시작합니다...")
+def fetch_and_send():
+    # [핵심] 봇이 살아있음을 먼저 알림
+    log("🚀 뉴스 수집기 가동... 텔레그램으로 시작 알림을 보냅니다.")
+    send_telegram("🤖 <b>[상태]</b> 뉴스 수집을 시작합니다... (잠시만 기다려주세요)")
+
     today = datetime.datetime.now().strftime("%Y-%m-%d %A")
     full_report = f"<b>🇺🇸 US Morning Briefing: {today}</b>\n\n"
+    
+    total_count = 0
 
     for category, urls in RSS_FEEDS.items():
-        print(f"🔍 {category} 수집 중...")
+        log(f"\n🔍 [카테고리] {category} 처리 중...")
         full_report += f"<b>{category}</b>\n"
-        news_count = 0
         
         for url in urls:
-            if news_count >= 10: break # 카테고리당 최대 10개
-            
             try:
-                feed = feedparser.parse(url)
-                for entry in feed.entries:
-                    if news_count >= 10: break
-                    
-                    title = entry.title
-                    link = entry.link
-                    
-                    # 제목에 HTML 특수문자가 있을 경우 처리 (간단하게)
-                    title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    
-                    full_report += f"• <a href='{link}'>{title}</a>\n"
-                    news_count += 1
+                log(f"  - 접속 시도: {url[:40]}...")
+                # 구글 뉴스 등 차단 방지를 위한 헤더 추가
+                d = feedparser.parse(url, agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                
+                if not d.entries:
+                    log("    ⚠️ 빈 결과 (차단되었거나 뉴스가 없음)")
+                    continue
+                
+                count = 0
+                for entry in d.entries[:5]: # 소스당 5개만
+                    title = entry.title.replace("<", "&lt;").replace(">", "&gt;")
+                    full_report += f"• <a href='{entry.link}'>{title}</a>\n"
+                    count += 1
+                
+                log(f"    ✅ {count}개 수집 완료")
+                total_count += count
+                
             except Exception as e:
-                print(f"⚠️ 피드 오류 ({url}): {e}")
+                log(f"    ❌ 에러 발생: {e}")
                 continue
         
         full_report += "\n"
 
-    full_report += "<i>Data aggregated via RSS.</i>"
-    return full_report
+    if total_count == 0:
+        log("❌ 수집된 뉴스가 0개입니다.")
+        send_telegram("⚠️ <b>[오류]</b> 뉴스를 하나도 가져오지 못했습니다. 로그를 확인해주세요.")
+    else:
+        log(f"📤 총 {total_count}개의 뉴스 전송 시작...")
+        send_telegram(full_report)
+        log("✅ 전송 완료")
 
 if __name__ == "__main__":
-    news_report = fetch_news()
-    print("📤 텔레그램 전송 중...")
-    send_telegram_message(news_report)
-    print("✅ 완료되었습니다.")
+    try:
+        fetch_and_send()
+    except Exception as e:
+        log(f"🔥 치명적 오류: {e}")
+        send_telegram(f"🔥 봇 실행 중 오류 발생: {e}")
