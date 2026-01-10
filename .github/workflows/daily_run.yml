@@ -1,0 +1,30 @@
+name: Daily US News Briefing
+
+on:
+  schedule:
+    # 매일 한국 시간 오전 07:00 (UTC 22:00)
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
+    - name: Install libraries
+      run: |
+        pip install feedparser requests
+
+    - name: Run News Bot
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+      run: python news_bot.py
