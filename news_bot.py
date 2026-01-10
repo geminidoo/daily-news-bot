@@ -1,64 +1,46 @@
-import feedparser
-import requests
-import datetime
-import time
 import os
+import requests
+import sys
 
-# 텔레그램 설정 (나중에 Secrets에서 가져옴)
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-CHAT_ID = os.environ.get('CHAT_ID')
+# 환경변수 가져오기
+token = os.environ.get('TELEGRAM_TOKEN')
+chat_id = os.environ.get('CHAT_ID')
 
-# 뉴스 소스 (카테고리별 10개씩 수집)
-RSS_FEEDS = {
-    "1. 🌏 지정학 (Geopolitics)": [
-        "https://news.google.com/rss/search?q=Geopolitics+when:1d&hl=en-US&gl=US&ceid=US:en",
-        "http://feeds.bbci.co.uk/news/world/rss.xml"
-    ],
-    "2. 📈 경제 (Economy)": [
-        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
-        "https://finance.yahoo.com/news/rssindex"
-    ],
-    "3. 🏛️ 정치 (Politics)": [
-        "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml",
-        "https://feeds.washingtonpost.com/rss/politics"
-    ],
-    "4. 🏭 기술 (Tech)": [
-        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910",
-        "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"
-    ]
+print("--- 🔍 진단 시작 ---")
+
+# 1. 시크릿(비밀번호)이 잘 넘어왔는지 확인
+if not token:
+    print("❌ 치명적 에러: TELEGRAM_TOKEN이 없습니다! Secrets 설정 이름을 확인하세요.")
+    sys.exit(1)
+else:
+    # 보안을 위해 앞 4자리만 보여주고 나머지는 가림
+    print(f"✅ 토큰 로드 성공: {token[:4]}****** (글자수: {len(token)})")
+
+if not chat_id:
+    print("❌ 치명적 에러: CHAT_ID가 없습니다! Secrets 설정 이름을 확인하세요.")
+    sys.exit(1)
+else:
+    print(f"✅ CHAT_ID 로드 성공: {chat_id}")
+
+# 2. 텔레그램 서버에 강제로 '테스트' 메시지 보내보기
+print("\n--- 🚀 메시지 전송 시도 ---")
+url = f"https://api.telegram.org/bot{token}/sendMessage"
+payload = {
+    'chat_id': chat_id,
+    'text': '🔔 [테스트] 연결 성공! 이 메시지가 보이면 설정이 완벽한 것입니다.'
 }
 
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    chunk_size = 4000
-    for i in range(0, len(message), chunk_size):
-        chunk = message[i:i+chunk_size]
-        payload = {'chat_id': CHAT_ID, 'text': chunk, 'parse_mode': 'HTML', 'disable_web_page_preview': True}
-        try: requests.post(url, data=payload)
-        except Exception as e: print(e)
-        time.sleep(1)
+try:
+    response = requests.post(url, data=payload)
+    print(f"📡 서버 응답 코드: {response.status_code}")
+    print(f"📝 서버 응답 메시지: {response.text}") # 여기가 핵심입니다!
 
-def fetch_news():
-    today = datetime.datetime.now().strftime("%Y-%m-%d %A")
-    full_report = f"<b>🇺🇸 US Morning Briefing: {today}</b>\n\n"
-    for category, urls in RSS_FEEDS.items():
-        full_report += f"<b>{category}</b>\n"
-        count = 0
-        for url in urls:
-            if count >= 10: break
-            try:
-                feed = feedparser.parse(url)
-                for entry in feed.entries:
-                    if count >= 10: break
-                    full_report += f"• <a href='{entry.link}'>{entry.title}</a>\n"
-                    count += 1
-            except: continue
-        full_report += "\n"
-    return full_report
-
-if __name__ == "__main__":
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("Error: 토큰이 없습니다.")
+    if response.status_code == 200:
+        print("\n🎉 결과: 전송 성공! 텔레그램을 확인하세요.")
     else:
-        report = fetch_news()
-        send_telegram_message(report)
+        print("\n🔥 결과: 전송 실패! 위의 '서버 응답 메시지'를 읽어보세요.")
+        sys.exit(1) # 실패 시 빨간 X를 띄우기 위해 강제 종료
+
+except Exception as e:
+    print(f"시스템 에러 발생: {e}")
+    sys.exit(1)
