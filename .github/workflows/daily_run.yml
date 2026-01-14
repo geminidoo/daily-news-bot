@@ -3,7 +3,7 @@ name: Daily US News Briefing
 on:
   schedule:
     # 매일 한국 시간 오전 07:00 (UTC 22:00)
-    - cron: '0 22 * * *'
+    - cron: '0 23 * * *'
   workflow_dispatch:
 
 jobs:
